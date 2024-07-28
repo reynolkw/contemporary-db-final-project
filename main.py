@@ -33,20 +33,20 @@ class CrosleyWeather:
         weather_collection = self.dbclient["CrosleyWeather"]["weather"]
         
         pipeline = [
-            {'$match': {'dt': {'$gte': int(self.cutoff_datetime.timestamp())}}},
-            {'$group': {
-                '_id': None,
-                'average_temp': {'$avg': '$main.temp'},
-                'average_humidity': {'$avg': '$main.humidity'},
-                'average_visibility': {'$avg': '$visibility'},
-                'average_wind': {'$avg': '$wind.speed'},
-                'unique_descriptions': {'$addToSet': '$weather.description'},
+            {"$match": {"dt": {"$gte": int(self.cutoff_datetime.timestamp())}}},
+            {"$group": {
+                "_id": None,
+                "average_temp": {"$avg": "$main.temp"},
+                "average_humidity": {"$avg": "$main.humidity"},
+                "average_visibility": {"$avg": "$visibility"},
+                "average_wind": {"$avg": "$wind.speed"},
+                "unique_descriptions": {"$addToSet": "$weather.description"},
             }}
         ]
 
         result = list(weather_collection.aggregate(pipeline))
         if not result:
-            print(f"NO DATA FOUND FOR THE LAST {self.time_resolution} HOUR.")
+            print(f"NO DATA FOUND FOR THE LAST {self.time_resolution} HOUR(S).")
             exit()
 
         average_temp = result[0]["average_temp"]
@@ -56,28 +56,32 @@ class CrosleyWeather:
         else:
             forecasted_temp = average_temp - random.uniform(0, 1)
 
+        forecasted_temp = (forecasted_temp - 273.15) * 9/5 + 32
+
         forecast = {
-            "next_hour_temp_farenheit": (forecasted_temp - 273.15) * 9/5 + 32,
+            "next_hour_temp_farenheit": forecasted_temp,
         }
+
+        del result[0]["average_temp"]
 
         forecast = forecast | get_forecast_summary(forecasted_temp, result[0])
 
         forecast_collection = self.dbclient["CrosleyWeather"]["forecast"]
-        query = {"_id": self.runtime_current_time.strftime('%Y%m%d%H')}
+        query = {"_id": self.runtime_current_time.strftime("%Y%m%d%H")}
         result = forecast_collection.update_one(query, {"$set": forecast}, upsert=True)
 
         print(f"UPSERTED FORECAST DOCUMENT.\n")
 
     def get_forecast_document(self):
         forecast_collection = self.dbclient["CrosleyWeather"]["forecast"]
-        filter = {"_id": self.runtime_current_time.strftime('%Y%m%d%H')}
+        filter = {"_id": self.runtime_current_time.strftime("%Y%m%d%H")}
         return forecast_collection.find_one(filter)
 
     def delete_old_weather_documents(self):
         """Delete weather documents that are older than one hour"""
         weather_collection = self.dbclient["CrosleyWeather"]["weather"]
 
-        result = weather_collection.delete_many({"timestamp": {"$lt": self.cutoff_datetime}})
+        result = weather_collection.delete_many({"dt": {"$lt": self.cutoff_datetime.timestamp()}})
 
         print(f"\nDELETED {result.deleted_count} DOCUMENTS OLDER THAN ONE HOUR.")
 
